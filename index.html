@@ -28,6 +28,9 @@
   img { display: block; }
 
   .page { max-width: 640px; margin: 0 auto; padding: 0 16px 120px; }
+  .appsw { display: flex; gap: 4px; width: max-content; margin-top: 12px; padding: 3px; background: var(--soft); border-radius: 12px; }
+  .appsw a { display: grid; place-items: center; min-height: 36px; padding: 0 16px; border-radius: 9px; font-size: 14px; font-weight: 600; color: var(--sub); text-decoration: none; }
+  .appsw a[aria-current] { background: var(--bg); color: var(--accent); box-shadow: 0 1px 3px rgba(0,0,0,.12); }
   .view { display: none; } .view.on { display: block; }
   .head { display: flex; justify-content: space-between; align-items: center; padding: 20px 0 8px; }
   h1 { font: 700 26px/1.3 var(--sans); margin: 0; }
@@ -142,6 +145,7 @@
 </defs></svg>
 
 <div class="page">
+  <nav class="appsw" aria-label="アプリの切り替え"><a href="https://kinotake-b.github.io/cooking-recipe-note/">レシピ帳</a><a aria-current="page">カフェ帳</a></nav>
   <!-- 記録 -->
   <section class="view on" id="v-list">
     <div class="head"><h1>カフェ帳</h1><span class="sm" id="listCount"></span></div>
@@ -360,7 +364,7 @@
     visited.forEach(function (it) { (it.tags || []).forEach(function (t) { if (used.indexOf(t) < 0) used.push(t); }); });
     if (tagFilter && used.indexOf(tagFilter) < 0) tagFilter = '';
     $('tagChips').innerHTML = used.map(function (t) { return '<button class="chip' + (t === tagFilter ? ' on' : '') + '" data-tagf="' + esc(t) + '">' + esc(t) + '</button>'; }).join('');
-    if (!visited.length) $('list').innerHTML = '<div class="empty"><p>まだ記録がありません。<br>行ったカフェの名前と、頼んだ1杯から残せます。</p><button class="btn primary" data-add="1">最初の1軒を記録する</button></div>';
+    if (!visited.length) $('list').innerHTML = '<div class="empty"><p>まだ記録がありません。<br>店名と、頼んだ1杯から<br>気軽に残せます。</p><button class="btn primary" data-add="1">最初の1軒を記録する</button></div>';
     else if (!rows.length) $('list').innerHTML = '<div class="empty"><p>条件に合うカフェがありません。</p></div>';
     else $('list').innerHTML = '<div class="grid">' + rows.map(tileHtml).join('') + '</div>';
   }
