@@ -175,6 +175,7 @@
   <section class="view" id="v-stats">
     <div class="head"><h1>統計</h1></div>
     <div id="stats"></div>
+    <div id="syncBox"></div>
     <h2 class="sec">データの保管</h2>
     <p class="sm">記録はこの端末のブラウザの中にだけ保存されます。機種変更やブラウザのデータ消去に備えて、ときどき書き出してください。</p>
     <div class="row">
@@ -268,6 +269,7 @@
 </div>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+<script src="sync.js?v=1"></script>
 <script>
 (function () {
   'use strict';
@@ -294,7 +296,7 @@
     } catch (e) { items = []; }
   }
   function save() {
-    try { localStorage.setItem(KEY, JSON.stringify({ items: items, customTags: customTags })); return true; }
+    try { localStorage.setItem(KEY, JSON.stringify({ items: items, customTags: customTags })); if (window.Sync) Sync.changed(); return true; }
     catch (e) { toast('保存できませんでした。写真が多すぎるかもしれません。書き出してから整理してください。'); return false; }
   }
   var toastTimer;
@@ -703,6 +705,18 @@
     if (tab === 'list') renderList(); else if (tab === 'want') renderWant(); else if (tab === 'map') renderMap(); else if (tab === 'stats') renderStats();
   }
   load(); setTab('list');
+  if (window.Sync) {
+    Sync.init({
+      name: 'cafe', items: 'cafe_items', meta: 'cafe_meta',
+      getItems: function () { return items; },
+      setItems: function (a) { items = a; save(); },
+      getMeta: function () { return { customTags: customTags }; },
+      setMeta: function (m) { customTags = (m && m.customTags) || []; save(); },
+      metaScore: function (m) { return ((m && m.customTags) || []).length; },
+      onApplied: render
+    });
+    Sync.mountUI($('syncBox'));
+  }
 })();
 </script>
 <script>
