@@ -1,0 +1,658 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="theme-color" content="#ffffff">
+<meta name="color-scheme" content="light">
+<meta name="robots" content="noindex">
+<meta name="description" content="行ったカフェと行きたいカフェを、味や値段といっしょに残す個人用カフェ帳">
+<title>カフェ帳</title>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
+<style>
+  :root {
+    --bg: #ffffff; --soft: #f6f4f1; --line: #e8e3dc; --ink: #2a2522; --sub: #7a7068;
+    --accent: #8a5232; --tint: #f4e9e0; --star: #d9923b;
+    --sans: system-ui, -apple-system, "Hiragino Sans", "Hiragino Kaku Gothic ProN", "Yu Gothic", Meiryo, sans-serif;
+    --serif: "Hiragino Mincho ProN", "Yu Mincho", "Noto Serif JP", serif;
+  }
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  html { color-scheme: light; }
+  body { margin: 0; background: var(--bg); color: var(--ink); font: 16px/1.7 var(--sans); -webkit-text-size-adjust: 100%; }
+  [hidden] { display: none !important; }
+  button { font: inherit; color: inherit; cursor: pointer; background: none; border: 0; padding: 0; }
+  input, textarea, select { width: 100%; font: inherit; color: var(--ink); background: var(--soft); border: 1px solid transparent; border-radius: 12px; padding: 10px 14px; min-height: 46px; }
+  textarea { resize: vertical; line-height: 1.7; }
+  input:focus, textarea:focus, select:focus { outline: none; border-color: var(--accent); background: var(--bg); }
+  ::placeholder { color: #b0a79e; }
+  img { display: block; }
+
+  .page { max-width: 640px; margin: 0 auto; padding: 0 16px 120px; }
+  .view { display: none; } .view.on { display: block; }
+  .head { display: flex; justify-content: space-between; align-items: center; padding: 20px 0 8px; }
+  h1 { font: 600 28px/1.3 var(--serif); letter-spacing: .02em; margin: 0; }
+  h2.sec { font: 600 18px/1.4 var(--serif); margin: 28px 0 10px; padding-bottom: 8px; border-bottom: 1px solid var(--line); }
+  .sm { font-size: 13px; color: var(--sub); }
+  .accent { color: var(--accent); }
+
+  .btn { display: inline-flex; align-items: center; justify-content: center; gap: 6px; min-height: 46px; padding: 0 18px; border-radius: 12px; background: var(--soft); font-weight: 600; transition: transform .1s; }
+  .btn:active { transform: scale(.98); }
+  .btn.primary { background: var(--accent); color: #fff; }
+  .btn.line { background: var(--bg); color: var(--accent); box-shadow: inset 0 0 0 1.5px var(--accent); }
+  .btn.text { background: none; color: var(--sub); font-weight: 500; padding: 0 8px; }
+  .btn.danger { background: none; color: #b3261e; font-weight: 500; }
+  .btn.small { min-height: 36px; padding: 0 12px; font-size: 14px; }
+  .btn.block { width: 100%; }
+  .row { display: flex; gap: 8px; margin-top: 10px; } .row > * { flex: 1; }
+  @media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
+
+  /* 検索・絞り込み */
+  .filters { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 8px; }
+  .filters .wide { grid-column: 1 / -1; }
+  .chips { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+  .chip { padding: 4px 12px; min-height: 32px; border-radius: 999px; background: var(--soft); font-size: 14px; color: var(--sub); }
+  .chip.on { background: var(--accent); color: #fff; }
+
+  /* カード */
+  .card { display: flex; gap: 12px; padding: 14px 0; border-bottom: 1px solid var(--line); cursor: pointer; width: 100%; text-align: left; }
+  .thumb { flex: none; width: 72px; height: 72px; border-radius: 50%; background: var(--tint); display: grid; place-items: center; font-size: 28px; overflow: hidden; }
+  .thumb img { width: 100%; height: 100%; object-fit: cover; }
+  .card .body { flex: 1; min-width: 0; }
+  .card .name { font: 600 17px/1.4 var(--serif); }
+  .card .meta { font-size: 13px; color: var(--sub); }
+  .card .memo { font-size: 14px; color: var(--ink); margin-top: 2px; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+  .card .price { font-size: 13px; color: var(--accent); font-weight: 600; }
+  .stars { color: var(--star); letter-spacing: 1px; font-size: 15px; }
+  .stars .off { color: #ddd5cb; }
+  .empty { text-align: center; color: var(--sub); padding: 48px 16px; }
+  .empty .big { font-size: 40px; }
+
+  /* 下のメニュー */
+  nav.tabs { position: fixed; left: 0; right: 0; bottom: 0; background: rgba(255,255,255,.96); backdrop-filter: blur(8px); border-top: 1px solid var(--line); display: flex; justify-content: center; padding-bottom: env(safe-area-inset-bottom); z-index: 20; }
+  nav.tabs .in { display: flex; width: 100%; max-width: 640px; }
+  nav.tabs button { flex: 1; padding: 8px 0 6px; font-size: 11px; color: var(--sub); display: flex; flex-direction: column; align-items: center; gap: 0; }
+  nav.tabs button .ic { font-size: 22px; line-height: 1.3; }
+  nav.tabs button.on { color: var(--accent); font-weight: 700; }
+  .fab { position: fixed; right: 16px; bottom: calc(72px + env(safe-area-inset-bottom)); width: 56px; height: 56px; border-radius: 50%; background: var(--accent); color: #fff; font-size: 30px; line-height: 1; box-shadow: 0 4px 14px rgba(60,30,10,.3); z-index: 21; display: grid; place-items: center; }
+
+  /* 画面いっぱいのシート */
+  .sheet { position: fixed; inset: 0; background: var(--bg); z-index: 50; overflow-y: auto; -webkit-overflow-scrolling: touch; }
+  .sheet .page { padding-bottom: 60px; }
+  .sheet .bar { position: sticky; top: 0; background: rgba(255,255,255,.96); backdrop-filter: blur(8px); border-bottom: 1px solid var(--line); z-index: 2; }
+  .sheet .bar .in { max-width: 640px; margin: 0 auto; padding: 8px 8px; display: flex; justify-content: space-between; align-items: center; }
+  .bar .ttl { font: 600 17px var(--serif); }
+
+  /* フォーム */
+  label.f { display: block; font-size: 13px; color: var(--sub); font-weight: 600; margin: 16px 0 6px; }
+  .seg { display: flex; background: var(--soft); border-radius: 12px; padding: 3px; }
+  .seg button { flex: 1; min-height: 40px; border-radius: 10px; font-weight: 600; color: var(--sub); }
+  .seg button.on { background: var(--bg); color: var(--accent); box-shadow: 0 1px 3px rgba(0,0,0,.1); }
+  .starin { display: flex; gap: 4px; }
+  .starin button { font-size: 34px; line-height: 1; color: #ddd5cb; padding: 2px 4px; }
+  .starin button.on { color: var(--star); }
+  .two { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+  .order { display: grid; grid-template-columns: 1fr 96px 40px; gap: 6px; margin-bottom: 6px; }
+  .order button { color: var(--sub); font-size: 20px; }
+  .slider { display: grid; grid-template-columns: 52px 1fr 20px; align-items: center; gap: 8px; font-size: 14px; }
+  .slider input { padding: 0; min-height: 32px; background: none; accent-color: var(--accent); }
+  .photoin { width: 100%; aspect-ratio: 16/10; border-radius: 16px; background: var(--soft); display: grid; place-items: center; color: var(--sub); overflow: hidden; position: relative; }
+  .photoin img { width: 100%; height: 100%; object-fit: cover; }
+
+  /* 詳細 */
+  .hero { width: 100%; aspect-ratio: 16/10; object-fit: cover; border-radius: 16px; margin-top: 12px; }
+  .kv { display: grid; grid-template-columns: 88px 1fr; gap: 6px 10px; margin: 14px 0; font-size: 15px; }
+  .kv dt { color: var(--sub); font-size: 13px; padding-top: 2px; } .kv dd { margin: 0; }
+  .tag { display: inline-block; background: var(--tint); color: var(--accent); border-radius: 999px; padding: 1px 10px; font-size: 13px; margin: 0 4px 4px 0; }
+  .tastebar { display: grid; grid-template-columns: 44px 1fr; align-items: center; gap: 8px; font-size: 13px; margin-bottom: 4px; }
+  .tastebar .tr { height: 8px; background: var(--soft); border-radius: 4px; overflow: hidden; } .tastebar .tr i { display: block; height: 100%; background: var(--accent); border-radius: 4px; }
+
+  /* 地図 */
+  #map { height: calc(100vh - 220px); min-height: 320px; border-radius: 16px; overflow: hidden; margin-top: 8px; background: var(--soft); }
+
+  /* 統計 */
+  .tiles { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 12px; }
+  .tile { background: var(--soft); border-radius: 16px; padding: 14px; }
+  .tile b { display: block; font: 600 26px/1.3 var(--serif); } .tile span { font-size: 13px; color: var(--sub); }
+  .bars { display: flex; align-items: flex-end; gap: 8px; height: 140px; margin-top: 8px; }
+  .bars .b { flex: 1; display: flex; flex-direction: column; justify-content: flex-end; align-items: center; height: 100%; font-size: 11px; color: var(--sub); }
+  .bars .b i { display: block; width: 100%; background: var(--accent); border-radius: 6px 6px 0 0; min-height: 2px; }
+  .hbar { display: grid; grid-template-columns: 96px 1fr 36px; align-items: center; gap: 8px; font-size: 14px; margin: 6px 0; }
+  .hbar .tr { height: 10px; background: var(--soft); border-radius: 5px; overflow: hidden; } .hbar .tr i { display: block; height: 100%; background: var(--accent); }
+  .hbar span:first-child { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; } .hbar span:last-child { text-align: right; color: var(--sub); }
+
+  .toast { position: fixed; left: 50%; bottom: 100px; transform: translateX(-50%); background: #2a2522; color: #fff; padding: 10px 18px; border-radius: 999px; font-size: 14px; z-index: 100; max-width: 90%; }
+</style>
+</head>
+<body>
+
+<div class="page">
+  <!-- 記録 -->
+  <section class="view on" id="v-list">
+    <div class="head"><h1>カフェ帳</h1><span class="sm" id="listCount"></span></div>
+    <input id="q" type="search" placeholder="店名・エリア・飲み物・メモで探す">
+    <div class="filters">
+      <select id="fRate"><option value="0">評価: すべて</option><option value="5">★5だけ</option><option value="4">★4以上</option><option value="3">★3以上</option></select>
+      <select id="fSort"><option value="new">新しい順</option><option value="old">古い順</option><option value="rate">評価が高い順</option><option value="name">店名順</option></select>
+    </div>
+    <div class="chips" id="tagChips"></div>
+    <div id="list"></div>
+  </section>
+
+  <!-- 行きたい -->
+  <section class="view" id="v-want">
+    <div class="head"><h1>行きたい</h1><span class="sm" id="wantCount"></span></div>
+    <div id="wantList"></div>
+  </section>
+
+  <!-- 地図 -->
+  <section class="view" id="v-map">
+    <div class="head"><h1>地図</h1><span class="sm" id="mapNote"></span></div>
+    <div id="map"></div>
+    <p class="sm">茶色の丸=行った店、灰色の丸=行きたい店。位置は店を登録するときに「住所から探す」か「現在地」で入れます。</p>
+  </section>
+
+  <!-- 統計 -->
+  <section class="view" id="v-stats">
+    <div class="head"><h1>統計</h1></div>
+    <div id="stats"></div>
+    <h2 class="sec">データの保管</h2>
+    <p class="sm">記録はこの端末のブラウザの中にだけ保存されます。機種変更やブラウザのデータ消去に備えて、ときどき書き出してください。</p>
+    <div class="row">
+      <button class="btn line" id="btnExport">書き出す</button>
+      <button class="btn line" id="btnImport">読み込む</button>
+    </div>
+    <input type="file" id="fileImport" accept="application/json,.json" hidden>
+  </section>
+</div>
+
+<button class="fab" id="fab" aria-label="カフェを追加">＋</button>
+
+<nav class="tabs"><div class="in">
+  <button data-tab="list" class="on"><span class="ic">☕</span>記録</button>
+  <button data-tab="want"><span class="ic">🔖</span>行きたい</button>
+  <button data-tab="map"><span class="ic">📍</span>地図</button>
+  <button data-tab="stats"><span class="ic">📊</span>統計</button>
+</div></nav>
+
+<!-- 詳細 -->
+<div class="sheet" id="detail" hidden></div>
+
+<!-- 編集 -->
+<div class="sheet" id="editor" hidden>
+  <div class="bar"><div class="in">
+    <button class="btn text" id="edCancel">閉じる</button>
+    <span class="ttl" id="edTitle">カフェを記録</span>
+    <button class="btn primary small" id="edSave">保存</button>
+  </div></div>
+  <div class="page">
+    <div class="seg" style="margin-top:16px">
+      <button data-status="visited" class="on">行った</button>
+      <button data-status="want">行きたい</button>
+    </div>
+
+    <label class="f">店名 *</label>
+    <input id="fName" placeholder="例: ○○珈琲店">
+    <div class="two">
+      <div><label class="f">エリア</label><input id="fArea" placeholder="例: 下北沢"></div>
+      <div><label class="f" id="fDateLbl">訪問日</label><input id="fDate" type="date"></div>
+    </div>
+    <div class="row" style="margin-top:10px">
+      <button class="btn line small" id="btnGeo">📍 住所から探す</button>
+      <button class="btn line small" id="btnHere">現在地を使う</button>
+    </div>
+    <div class="sm" id="geoState" style="margin-top:6px"></div>
+
+    <div class="only-visited">
+      <label class="f">評価</label>
+      <div class="starin" id="starIn"></div>
+
+      <label class="f">注文したもの(名前と値段)</label>
+      <div id="orders"></div>
+      <button class="btn line small" id="addOrder">＋ 注文を足す</button>
+      <div class="sm" style="margin-top:6px">合計: <b id="orderTotal">0</b> 円</div>
+
+      <h2 class="sec">コーヒーのこと</h2>
+      <label class="f">メインの飲み物</label>
+      <input id="fDrink" list="drinkList" placeholder="例: ハンドドリップ(ブレンド)">
+      <datalist id="drinkList"><option>エスプレッソ</option><option>カフェラテ</option><option>カプチーノ</option><option>フラットホワイト</option><option>ハンドドリップ</option><option>アイスコーヒー</option><option>水出し</option><option>エアロプレス</option></datalist>
+      <label class="f">豆・産地</label>
+      <input id="fBeans" placeholder="例: エチオピア イルガチェフェ">
+      <div class="two">
+        <div><label class="f">焙煎度</label>
+          <select id="fRoast"><option value="">未入力</option><option>浅煎り</option><option>中煎り</option><option>中深煎り</option><option>深煎り</option></select></div>
+        <div><label class="f">温度</label>
+          <select id="fTemp"><option value="">未入力</option><option>ホット</option><option>アイス</option></select></div>
+      </div>
+      <label class="f">味の印象</label>
+      <div class="slider"><span>酸味</span><input type="range" id="tAcid" min="0" max="5" value="0"><b id="tAcidV">–</b></div>
+      <div class="slider"><span>苦味</span><input type="range" id="tBitter" min="0" max="5" value="0"><b id="tBitterV">–</b></div>
+      <div class="slider"><span>甘み</span><input type="range" id="tSweet" min="0" max="5" value="0"><b id="tSweetV">–</b></div>
+      <div class="sm">0のままなら「未入力」として扱います。</div>
+
+      <h2 class="sec">お店のこと</h2>
+      <label class="f">タグ</label>
+      <div class="chips" id="tagPick"></div>
+      <div class="row"><input id="newTag" placeholder="タグを足す(例: 猫がいる)"><button class="btn small" id="btnNewTag" style="flex:none">追加</button></div>
+    </div>
+
+    <label class="f" id="fMemoLbl">メモ</label>
+    <textarea id="fMemo" rows="4" placeholder="感想、また頼みたいもの、気づいたこと"></textarea>
+
+    <label class="f">写真</label>
+    <label class="photoin" id="photoBox"><span id="photoHint">タップして写真を選ぶ</span><input type="file" id="fPhoto" accept="image/*" hidden></label>
+    <div class="row"><button class="btn text" id="btnPhotoDel" hidden>写真を外す</button></div>
+  </div>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+<script>
+(function () {
+  'use strict';
+  var KEY = 'cafe-note-v1';
+  var PRESET_TAGS = ['作業向き', '電源あり', 'Wi-Fi', '静か', '自家焙煎', 'スイーツ◎', 'ひとりOK', '夜まで', 'テラス', '席が多い'];
+  var $ = function (id) { return document.getElementById(id); };
+  var esc = function (s) { return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]; }); };
+  var yen = function (n) { return '¥' + Math.round(n).toLocaleString('ja-JP'); };
+  var today = function () { var d = new Date(); return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0'); };
+
+  /* ---------- データ ---------- */
+  var items = [];
+  var customTags = [];
+  function load() {
+    try {
+      var raw = localStorage.getItem(KEY);
+      if (raw) { var d = JSON.parse(raw); items = d.items || []; customTags = d.customTags || []; }
+    } catch (e) { items = []; }
+  }
+  function save() {
+    try { localStorage.setItem(KEY, JSON.stringify({ items: items, customTags: customTags })); return true; }
+    catch (e) { toast('保存できませんでした。写真が多すぎるかもしれません。書き出してから整理してください。'); return false; }
+  }
+  var toastTimer;
+  function toast(msg) {
+    var t = document.createElement('div'); t.className = 'toast'; t.textContent = msg; document.body.appendChild(t);
+    clearTimeout(toastTimer); toastTimer = setTimeout(function () { t.remove(); }, 2600);
+  }
+  function total(it) { return (it.orders || []).reduce(function (s, o) { return s + (Number(o.p) || 0); }, 0); }
+  function allTags() {
+    var set = PRESET_TAGS.concat(customTags);
+    items.forEach(function (it) { (it.tags || []).forEach(function (t) { if (set.indexOf(t) < 0) set.push(t); }); });
+    return set;
+  }
+  function starsHtml(n) {
+    var s = ''; for (var i = 1; i <= 5; i++) s += i <= n ? '★' : '<span class="off">★</span>';
+    return '<span class="stars">' + s + '</span>';
+  }
+
+  /* ---------- 画面切り替え ---------- */
+  var tab = 'list';
+  function setTab(t) {
+    tab = t;
+    ['list', 'want', 'map', 'stats'].forEach(function (k) { $('v-' + k).classList.toggle('on', k === t); });
+    document.querySelectorAll('nav.tabs button').forEach(function (b) { b.classList.toggle('on', b.dataset.tab === t); });
+    $('fab').hidden = (t === 'map' || t === 'stats');
+    render(); window.scrollTo(0, 0);
+  }
+  document.querySelector('nav.tabs').addEventListener('click', function (e) {
+    var b = e.target.closest('button[data-tab]'); if (b) setTab(b.dataset.tab);
+  });
+
+  /* ---------- 一覧 ---------- */
+  var tagFilter = '';
+  function cardHtml(it) {
+    var thumb = it.photo ? '<img src="' + it.photo + '" alt="">' : '☕';
+    var meta = [it.area, it.date ? it.date.replace(/-/g, '/') : ''].filter(Boolean).map(esc).join(' ・ ');
+    var line2 = it.status === 'want' ? '' : starsHtml(it.rating || 0) + (it.drink ? ' <span class="sm">' + esc(it.drink) + '</span>' : '');
+    var pr = total(it) ? '<div class="price">' + yen(total(it)) + '</div>' : '';
+    return '<button class="card" data-open="' + it.id + '"><div class="thumb">' + thumb + '</div><div class="body">' +
+      '<div class="name">' + esc(it.name) + '</div><div class="meta">' + meta + '</div>' + (line2 ? '<div>' + line2 + '</div>' : '') +
+      (it.memo ? '<div class="memo">' + esc(it.memo) + '</div>' : '') + pr + '</div></button>';
+  }
+  function renderList() {
+    var visited = items.filter(function (i) { return i.status !== 'want'; });
+    var q = $('q').value.trim().toLowerCase();
+    var minR = Number($('fRate').value);
+    var rows = visited.filter(function (it) {
+      if (minR && (it.rating || 0) < minR) return false;
+      if (tagFilter && (it.tags || []).indexOf(tagFilter) < 0) return false;
+      if (!q) return true;
+      var hay = [it.name, it.area, it.drink, it.beans, it.memo, (it.tags || []).join(' '), (it.orders || []).map(function (o) { return o.n; }).join(' ')].join(' ').toLowerCase();
+      return hay.indexOf(q) >= 0;
+    });
+    var sort = $('fSort').value;
+    rows.sort(function (a, b) {
+      if (sort === 'old') return (a.date || '').localeCompare(b.date || '');
+      if (sort === 'rate') return (b.rating || 0) - (a.rating || 0) || (b.date || '').localeCompare(a.date || '');
+      if (sort === 'name') return a.name.localeCompare(b.name, 'ja');
+      return (b.date || '').localeCompare(a.date || '');
+    });
+    $('listCount').textContent = visited.length ? rows.length + ' / ' + visited.length + '件' : '';
+    var used = [];
+    visited.forEach(function (it) { (it.tags || []).forEach(function (t) { if (used.indexOf(t) < 0) used.push(t); }); });
+    if (tagFilter && used.indexOf(tagFilter) < 0) tagFilter = '';
+    $('tagChips').innerHTML = used.map(function (t) { return '<button class="chip' + (t === tagFilter ? ' on' : '') + '" data-tagf="' + esc(t) + '">' + esc(t) + '</button>'; }).join('');
+    if (!visited.length) $('list').innerHTML = '<div class="empty"><div class="big">☕</div><p>まだ記録がありません。<br>右下の ＋ から、最初の1杯を残しましょう。</p></div>';
+    else if (!rows.length) $('list').innerHTML = '<div class="empty"><p>条件に合うカフェがありません。</p></div>';
+    else $('list').innerHTML = rows.map(cardHtml).join('');
+  }
+  function renderWant() {
+    var rows = items.filter(function (i) { return i.status === 'want'; }).sort(function (a, b) { return (b.created || 0) - (a.created || 0); });
+    $('wantCount').textContent = rows.length ? rows.length + '件' : '';
+    $('wantList').innerHTML = rows.length ? rows.map(cardHtml).join('') : '<div class="empty"><div class="big">🔖</div><p>行きたいお店をここにためておけます。<br>＋ から「行きたい」を選んで追加。</p></div>';
+  }
+  $('q').addEventListener('input', renderList);
+  $('fRate').addEventListener('change', renderList);
+  $('fSort').addEventListener('change', renderList);
+  $('tagChips').addEventListener('click', function (e) {
+    var b = e.target.closest('[data-tagf]'); if (!b) return;
+    tagFilter = (tagFilter === b.dataset.tagf) ? '' : b.dataset.tagf; renderList();
+  });
+  document.addEventListener('click', function (e) {
+    var c = e.target.closest('[data-open]'); if (c) openDetail(c.dataset.open);
+  });
+
+  /* ---------- 詳細 ---------- */
+  var detailId = null;
+  function find(id) { for (var i = 0; i < items.length; i++) if (items[i].id === id) return items[i]; return null; }
+  function openDetail(id) {
+    var it = find(id); if (!it) return; detailId = id;
+    var h = '<div class="bar"><div class="in"><button class="btn text" data-d="close">← 戻る</button><span class="ttl"></span><button class="btn text" data-d="edit">編集</button></div></div><div class="page">';
+    if (it.photo) h += '<img class="hero" src="' + it.photo + '" alt="">';
+    h += '<div class="head" style="padding-bottom:0"><h1 style="font-size:24px">' + esc(it.name) + '</h1></div>';
+    if (it.status === 'want') h += '<div class="sm">行きたいリスト</div>'; else h += '<div>' + starsHtml(it.rating || 0) + '</div>';
+    h += '<dl class="kv">';
+    function kv(k, v) { if (v) h += '<dt>' + k + '</dt><dd>' + v + '</dd>'; }
+    kv('エリア', esc(it.area));
+    kv(it.status === 'want' ? '行く予定' : '訪問日', esc((it.date || '').replace(/-/g, '/')));
+    kv('飲み物', esc([it.drink, it.temp].filter(Boolean).join(' / ')));
+    kv('豆・産地', esc(it.beans));
+    kv('焙煎度', esc(it.roast));
+    if ((it.orders || []).length) kv('注文', it.orders.map(function (o) { return esc(o.n || '(名前なし)') + (o.p ? ' ' + yen(o.p) : ''); }).join('<br>') + '<br><b>合計 ' + yen(total(it)) + '</b>');
+    if ((it.tags || []).length) kv('タグ', it.tags.map(function (t) { return '<span class="tag">' + esc(t) + '</span>'; }).join(''));
+    h += '</dl>';
+    var t = it.taste || {};
+    if (t.acid || t.bitter || t.sweet) {
+      h += '<h2 class="sec" style="margin-top:8px">味の印象</h2>';
+      [['酸味', t.acid], ['苦味', t.bitter], ['甘み', t.sweet]].forEach(function (p) {
+        if (p[1]) h += '<div class="tastebar"><span>' + p[0] + '</span><div class="tr"><i style="width:' + p[1] * 20 + '%"></i></div></div>';
+      });
+    }
+    if (it.memo) h += '<h2 class="sec">メモ</h2><div style="white-space:pre-wrap">' + esc(it.memo) + '</div>';
+    h += '<div class="row" style="margin-top:24px">';
+    if (it.status === 'want') h += '<button class="btn primary" data-d="went">行った! 記録する</button>';
+    h += '<a class="btn line" target="_blank" rel="noopener" href="https://www.google.com/maps/search/?api=1&query=' + encodeURIComponent(it.name + ' ' + (it.area || '')) + '">地図アプリで開く</a></div>';
+    h += '<div class="row"><button class="btn danger" data-d="del">この記録を削除</button></div></div>';
+    var d = $('detail'); d.innerHTML = h; d.hidden = false; d.scrollTop = 0;
+    document.body.style.overflow = 'hidden';
+  }
+  function closeDetail() { $('detail').hidden = true; document.body.style.overflow = ''; detailId = null; }
+  $('detail').addEventListener('click', function (e) {
+    var b = e.target.closest('[data-d]'); if (!b) return;
+    var a = b.dataset.d, it = find(detailId);
+    if (a === 'close') closeDetail();
+    else if (a === 'edit') { var id = detailId; closeDetail(); openEditor(id); }
+    else if (a === 'went') { var id2 = detailId; closeDetail(); openEditor(id2, true); }
+    else if (a === 'del') {
+      if (it && confirm('「' + it.name + '」を削除します。元に戻せません。よろしいですか?')) {
+        items = items.filter(function (x) { return x.id !== it.id; }); save(); closeDetail(); render(); toast('削除しました');
+      }
+    }
+  });
+
+  /* ---------- 編集 ---------- */
+  var ed = null; // 編集中の下書き
+  function blank(status) {
+    return { id: 'c' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6), status: status || 'visited', name: '', area: '', date: status === 'want' ? '' : today(), lat: null, lng: null, rating: 0, orders: [{ n: '', p: '' }], drink: '', beans: '', roast: '', temp: '', taste: { acid: 0, bitter: 0, sweet: 0 }, tags: [], memo: '', photo: '', created: Date.now() };
+  }
+  function openEditor(id, toVisited) {
+    var src = id ? find(id) : null;
+    ed = src ? JSON.parse(JSON.stringify(src)) : blank('visited');
+    ed._isNew = !src;
+    if (toVisited) { ed.status = 'visited'; ed.date = today(); }
+    if (!ed.orders || !ed.orders.length) ed.orders = [{ n: '', p: '' }];
+    if (!ed.taste) ed.taste = { acid: 0, bitter: 0, sweet: 0 };
+    if (!ed.tags) ed.tags = [];
+    $('edTitle').textContent = ed._isNew ? 'カフェを追加' : (toVisited ? '行ったので記録' : '記録を編集');
+    $('fName').value = ed.name; $('fArea').value = ed.area; $('fDate').value = ed.date || '';
+    $('fDrink').value = ed.drink || ''; $('fBeans').value = ed.beans || ''; $('fRoast').value = ed.roast || ''; $('fTemp').value = ed.temp || '';
+    $('fMemo').value = ed.memo || '';
+    [['tAcid', 'acid'], ['tBitter', 'bitter'], ['tSweet', 'sweet']].forEach(function (p) { $(p[0]).value = ed.taste[p[1]] || 0; sliderLabel(p[0]); });
+    setStatus(ed.status); drawStars(); drawOrders(); drawTags(); drawPhoto(); drawGeo();
+    $('editor').hidden = false; $('editor').scrollTop = 0; document.body.style.overflow = 'hidden';
+  }
+  function closeEditor() { $('editor').hidden = true; document.body.style.overflow = ''; ed = null; }
+  function setStatus(s) {
+    ed.status = s;
+    document.querySelectorAll('.seg button').forEach(function (b) { b.classList.toggle('on', b.dataset.status === s); });
+    document.querySelectorAll('.only-visited').forEach(function (el) { el.hidden = (s === 'want'); });
+    $('fDateLbl').textContent = s === 'want' ? '行く予定(任意)' : '訪問日';
+    $('fMemoLbl').textContent = s === 'want' ? 'メモ(行きたい理由・メニューなど)' : 'メモ';
+  }
+  document.querySelector('.seg').addEventListener('click', function (e) {
+    var b = e.target.closest('button'); if (!b) return;
+    setStatus(b.dataset.status);
+    if (b.dataset.status === 'visited' && !$('fDate').value) $('fDate').value = today();
+  });
+  function drawStars() {
+    var h = ''; for (var i = 1; i <= 5; i++) h += '<button type="button" data-star="' + i + '" class="' + (i <= ed.rating ? 'on' : '') + '" aria-label="星' + i + '">★</button>';
+    $('starIn').innerHTML = h;
+  }
+  $('starIn').addEventListener('click', function (e) {
+    var b = e.target.closest('[data-star]'); if (!b) return;
+    var n = Number(b.dataset.star); ed.rating = (ed.rating === n) ? 0 : n; drawStars();
+  });
+  function drawOrders() {
+    $('orders').innerHTML = ed.orders.map(function (o, i) {
+      return '<div class="order"><input data-oi="' + i + '" data-of="n" value="' + esc(o.n) + '" placeholder="例: ブレンド"><input data-oi="' + i + '" data-of="p" type="number" inputmode="numeric" min="0" value="' + esc(o.p) + '" placeholder="円"><button type="button" data-odel="' + i + '" aria-label="削除">×</button></div>';
+    }).join('');
+    calcTotal();
+  }
+  function calcTotal() { $('orderTotal').textContent = total(ed).toLocaleString('ja-JP'); }
+  $('orders').addEventListener('input', function (e) {
+    var el = e.target; if (el.dataset.oi == null) return;
+    ed.orders[Number(el.dataset.oi)][el.dataset.of] = el.value; calcTotal();
+  });
+  $('orders').addEventListener('click', function (e) {
+    var b = e.target.closest('[data-odel]'); if (!b) return;
+    ed.orders.splice(Number(b.dataset.odel), 1); if (!ed.orders.length) ed.orders.push({ n: '', p: '' }); drawOrders();
+  });
+  $('addOrder').addEventListener('click', function () { ed.orders.push({ n: '', p: '' }); drawOrders(); });
+  function sliderLabel(id) { var v = Number($(id).value); $(id + 'V').textContent = v ? v : '–'; }
+  ['tAcid', 'tBitter', 'tSweet'].forEach(function (id) { $(id).addEventListener('input', function () { sliderLabel(id); }); });
+  function drawTags() {
+    $('tagPick').innerHTML = allTags().map(function (t) { return '<button type="button" class="chip' + (ed.tags.indexOf(t) >= 0 ? ' on' : '') + '" data-tp="' + esc(t) + '">' + esc(t) + '</button>'; }).join('');
+  }
+  $('tagPick').addEventListener('click', function (e) {
+    var b = e.target.closest('[data-tp]'); if (!b) return;
+    var t = b.dataset.tp, i = ed.tags.indexOf(t); if (i >= 0) ed.tags.splice(i, 1); else ed.tags.push(t); drawTags();
+  });
+  $('btnNewTag').addEventListener('click', function () {
+    var t = $('newTag').value.trim(); if (!t) return;
+    if (allTags().indexOf(t) < 0) customTags.push(t);
+    if (ed.tags.indexOf(t) < 0) ed.tags.push(t);
+    $('newTag').value = ''; drawTags();
+  });
+
+  /* 写真(縮小して保存) */
+  function drawPhoto() {
+    $('photoBox').innerHTML = ed.photo ? '<img src="' + ed.photo + '" alt="">' : '<span>タップして写真を選ぶ</span>';
+    var inp = document.createElement('input'); inp.type = 'file'; inp.accept = 'image/*'; inp.hidden = true; inp.id = 'fPhoto';
+    inp.addEventListener('change', onPhoto); $('photoBox').appendChild(inp);
+    $('btnPhotoDel').hidden = !ed.photo;
+  }
+  function onPhoto(e) {
+    var f = e.target.files && e.target.files[0]; if (!f) return;
+    var url = URL.createObjectURL(f), img = new Image();
+    img.onload = function () {
+      var max = 800, r = Math.min(1, max / Math.max(img.width, img.height));
+      var c = document.createElement('canvas'); c.width = Math.round(img.width * r); c.height = Math.round(img.height * r);
+      c.getContext('2d').drawImage(img, 0, 0, c.width, c.height);
+      ed.photo = c.toDataURL('image/jpeg', 0.72); URL.revokeObjectURL(url); drawPhoto();
+    };
+    img.onerror = function () { URL.revokeObjectURL(url); toast('この写真は読み込めませんでした'); };
+    img.src = url;
+  }
+  $('btnPhotoDel').addEventListener('click', function () { ed.photo = ''; drawPhoto(); });
+
+  /* 位置 */
+  function drawGeo() {
+    $('geoState').innerHTML = (ed.lat != null) ? '✓ 位置を保存済み(地図に表示されます) <button class="btn text small" id="geoClear" type="button">消す</button>' : '位置は未設定です(地図に出したいときだけ)';
+    var c = $('geoClear'); if (c) c.addEventListener('click', function () { ed.lat = ed.lng = null; drawGeo(); });
+  }
+  $('btnGeo').addEventListener('click', function () {
+    var name = $('fName').value.trim(), area = $('fArea').value.trim();
+    if (!name && !area) { toast('店名かエリアを入れてください'); return; }
+    $('geoState').textContent = '探しています…';
+    fetch('https://nominatim.openstreetmap.org/search?format=json&limit=1&accept-language=ja&q=' + encodeURIComponent(name + ' ' + area))
+      .then(function (r) { return r.json(); })
+      .then(function (a) {
+        if (a && a[0]) { ed.lat = Number(a[0].lat); ed.lng = Number(a[0].lon); drawGeo(); toast('見つかりました: ' + String(a[0].display_name).slice(0, 30)); }
+        else { // 店名で見つからなければエリアだけで再検索
+          if (area && name) return fetch('https://nominatim.openstreetmap.org/search?format=json&limit=1&accept-language=ja&q=' + encodeURIComponent(area))
+            .then(function (r) { return r.json(); }).then(function (b) {
+              if (b && b[0]) { ed.lat = Number(b[0].lat); ed.lng = Number(b[0].lon); drawGeo(); toast('店は見つからず、エリアの中心にしました'); }
+              else { drawGeo(); toast('見つかりませんでした'); }
+            });
+          drawGeo(); toast('見つかりませんでした');
+        }
+      }).catch(function () { drawGeo(); toast('通信できませんでした'); });
+  });
+  $('btnHere').addEventListener('click', function () {
+    if (!navigator.geolocation) { toast('この端末では使えません'); return; }
+    $('geoState').textContent = '現在地を取得中…';
+    navigator.geolocation.getCurrentPosition(function (p) { ed.lat = p.coords.latitude; ed.lng = p.coords.longitude; drawGeo(); toast('現在地を保存しました'); },
+      function () { drawGeo(); toast('現在地を取得できませんでした(許可を確認してください)'); }, { timeout: 10000 });
+  });
+
+  $('edCancel').addEventListener('click', function () {
+    if (confirm('編集を閉じます。保存していない内容は消えます。')) closeEditor();
+  });
+  $('edSave').addEventListener('click', function () {
+    var name = $('fName').value.trim();
+    if (!name) { toast('店名を入れてください'); $('fName').focus(); return; }
+    ed.name = name; ed.area = $('fArea').value.trim(); ed.date = $('fDate').value;
+    ed.drink = $('fDrink').value.trim(); ed.beans = $('fBeans').value.trim(); ed.roast = $('fRoast').value; ed.temp = $('fTemp').value;
+    ed.taste = { acid: Number($('tAcid').value), bitter: Number($('tBitter').value), sweet: Number($('tSweet').value) };
+    ed.memo = $('fMemo').value.trim();
+    ed.orders = ed.orders.filter(function (o) { return String(o.n).trim() || Number(o.p); }).map(function (o) { return { n: String(o.n).trim(), p: Number(o.p) || 0 }; });
+    if (ed.status === 'want') { ed.rating = 0; }
+    var isNew = ed._isNew; delete ed._isNew;
+    var before = items.slice();
+    if (isNew) items.push(ed); else items = items.map(function (x) { return x.id === ed.id ? ed : x; });
+    if (!save()) { items = before; ed._isNew = isNew; return; }
+    var goTab = ed.status === 'want' ? 'want' : 'list';
+    closeEditor(); setTab(goTab); toast('保存しました');
+  });
+  $('fab').addEventListener('click', function () { openEditor(null); if (tab === 'want') { ed.status = 'want'; ed.date = ''; $('fDate').value = ''; setStatus('want'); } });
+
+  /* ---------- 地図 ---------- */
+  var map = null, layer = null;
+  function renderMap() {
+    var pts = items.filter(function (i) { return i.lat != null && i.lng != null; });
+    $('mapNote').textContent = pts.length + '件';
+    if (typeof L === 'undefined') { $('map').innerHTML = '<div class="empty">地図を読み込めませんでした。<br>ネットにつないでから開き直してください。</div>'; return; }
+    if (!map) {
+      map = L.map('map', { zoomControl: true }).setView([35.68, 139.76], 11);
+      L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19, attribution: '© OpenStreetMap contributors' }).addTo(map);
+      layer = L.layerGroup().addTo(map);
+    }
+    layer.clearLayers();
+    pts.forEach(function (it) {
+      var want = it.status === 'want';
+      var m = L.circleMarker([it.lat, it.lng], { radius: 10, color: '#fff', weight: 2, fillColor: want ? '#9a938c' : '#8a5232', fillOpacity: 1 }).addTo(layer);
+      var pop = document.createElement('div');
+      pop.innerHTML = '<b></b><br><span></span><br><a href="#" style="color:#8a5232">詳しく見る</a>';
+      pop.querySelector('b').textContent = it.name;
+      pop.querySelector('span').textContent = want ? '行きたい' : '★'.repeat(it.rating || 0) + ' ' + (it.area || '');
+      pop.querySelector('a').addEventListener('click', function (ev) { ev.preventDefault(); openDetail(it.id); });
+      m.bindPopup(pop);
+    });
+    setTimeout(function () {
+      map.invalidateSize();
+      if (pts.length) map.fitBounds(L.latLngBounds(pts.map(function (p) { return [p.lat, p.lng]; })), { padding: [40, 40], maxZoom: 15 });
+    }, 50);
+  }
+
+  /* ---------- 統計 ---------- */
+  function hbars(rows, unit) {
+    if (!rows.length) return '<p class="sm">データがまだありません。</p>';
+    var max = Math.max.apply(null, rows.map(function (r) { return r[1]; }));
+    return rows.map(function (r) { return '<div class="hbar"><span>' + esc(r[0]) + '</span><div class="tr"><i style="width:' + (max ? r[1] / max * 100 : 0) + '%"></i></div><span>' + r[1] + (unit || '') + '</span></div>'; }).join('');
+  }
+  function countBy(arr, fn) {
+    var m = {}; arr.forEach(function (x) { var k = fn(x); if (k) m[k] = (m[k] || 0) + 1; });
+    return Object.keys(m).map(function (k) { return [k, m[k]]; }).sort(function (a, b) { return b[1] - a[1]; });
+  }
+  function renderStats() {
+    var v = items.filter(function (i) { return i.status !== 'want'; });
+    if (!v.length) { $('stats').innerHTML = '<div class="empty"><div class="big">📊</div><p>記録がたまると、ここに集計が出ます。</p></div>'; return; }
+    var rated = v.filter(function (i) { return i.rating; });
+    var avg = rated.length ? (rated.reduce(function (s, i) { return s + i.rating; }, 0) / rated.length).toFixed(1) : '–';
+    var ym = today().slice(0, 7);
+    var spendAll = v.reduce(function (s, i) { return s + total(i); }, 0);
+    var spendMonth = v.filter(function (i) { return (i.date || '').slice(0, 7) === ym; }).reduce(function (s, i) { return s + total(i); }, 0);
+    var paid = v.filter(function (i) { return total(i) > 0; });
+    var perVisit = paid.length ? spendAll / paid.length : 0;
+    var h = '<div class="tiles">' +
+      '<div class="tile"><b>' + v.length + '</b><span>行った回数</span></div>' +
+      '<div class="tile"><b>' + avg + '</b><span>平均の評価</span></div>' +
+      '<div class="tile"><b>' + yen(spendMonth) + '</b><span>今月の支出</span></div>' +
+      '<div class="tile"><b>' + (perVisit ? yen(perVisit) : '–') + '</b><span>1回あたりの平均</span></div></div>';
+    // 直近6か月の支出
+    var months = [], d = new Date(); d.setDate(1);
+    for (var i = 5; i >= 0; i--) { var x = new Date(d.getFullYear(), d.getMonth() - i, 1); months.push(x.getFullYear() + '-' + String(x.getMonth() + 1).padStart(2, '0')); }
+    var sums = months.map(function (m) { return v.filter(function (it) { return (it.date || '').slice(0, 7) === m; }).reduce(function (s, it) { return s + total(it); }, 0); });
+    var mx = Math.max.apply(null, sums.concat([1]));
+    h += '<h2 class="sec">月ごとの支出(直近6か月)</h2><div class="bars">' + months.map(function (m, k) {
+      return '<div class="b"><span>' + (sums[k] ? yen(sums[k]) : '') + '</span><i style="height:' + Math.round(sums[k] / mx * 100) + '%"></i><span>' + Number(m.slice(5)) + '月</span></div>';
+    }).join('') + '</div>';
+    h += '<h2 class="sec">よく行くエリア</h2>' + hbars(countBy(v, function (i) { return i.area; }).slice(0, 5), '回');
+    h += '<h2 class="sec">よく頼む飲み物</h2>' + hbars(countBy(v, function (i) { return i.drink; }).slice(0, 5), '回');
+    h += '<h2 class="sec">焙煎度の好み</h2>' + hbars(countBy(v, function (i) { return i.roast; }), '回');
+    h += '<h2 class="sec">評価の内訳</h2>' + hbars([5, 4, 3, 2, 1].map(function (n) { return ['★' + n, v.filter(function (i) { return i.rating === n; }).length]; }), '件');
+    var tasted = v.filter(function (i) { return i.taste && (i.taste.acid || i.taste.bitter || i.taste.sweet); });
+    if (tasted.length) {
+      var av = function (k) { var a = tasted.filter(function (i) { return i.taste[k]; }); return a.length ? a.reduce(function (s, i) { return s + i.taste[k]; }, 0) / a.length : 0; };
+      h += '<h2 class="sec">味の傾向(平均)</h2>' + [['酸味', av('acid')], ['苦味', av('bitter')], ['甘み', av('sweet')]].map(function (p) {
+        return '<div class="tastebar"><span>' + p[0] + '</span><div class="tr"><i style="width:' + p[1] * 20 + '%"></i></div></div>';
+      }).join('');
+    }
+    h += '<h2 class="sec">よく付けるタグ</h2>' + hbars(countBy([].concat.apply([], v.map(function (i) { return i.tags || []; })), function (t) { return t; }).slice(0, 5), '件');
+    $('stats').innerHTML = h;
+  }
+
+  /* ---------- 書き出し・読み込み ---------- */
+  $('btnExport').addEventListener('click', function () {
+    var blob = new Blob([JSON.stringify({ app: 'cafe-note', version: 1, exported: new Date().toISOString(), items: items, customTags: customTags }, null, 1)], { type: 'application/json' });
+    var a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = 'cafe-note-' + today() + '.json';
+    document.body.appendChild(a); a.click(); a.remove(); setTimeout(function () { URL.revokeObjectURL(a.href); }, 1000);
+  });
+  $('btnImport').addEventListener('click', function () { $('fileImport').click(); });
+  $('fileImport').addEventListener('change', function (e) {
+    var f = e.target.files && e.target.files[0]; if (!f) return;
+    var r = new FileReader();
+    r.onload = function () {
+      try {
+        var d = JSON.parse(r.result);
+        if (!d || d.app !== 'cafe-note' || !Array.isArray(d.items)) throw new Error('形式');
+        var ids = {}; items.forEach(function (i) { ids[i.id] = 1; });
+        var add = d.items.filter(function (i) { return i && i.id && i.name && !ids[i.id]; });
+        if (!confirm(add.length + '件を追加します(すでにある記録は上書きしません)。よろしいですか?')) return;
+        items = items.concat(add);
+        (d.customTags || []).forEach(function (t) { if (customTags.indexOf(t) < 0) customTags.push(t); });
+        save(); render(); toast(add.length + '件を読み込みました');
+      } catch (err) { toast('このファイルは読み込めませんでした'); }
+      $('fileImport').value = '';
+    };
+    r.readAsText(f);
+  });
+
+  function render() {
+    if (tab === 'list') renderList(); else if (tab === 'want') renderWant(); else if (tab === 'map') renderMap(); else if (tab === 'stats') renderStats();
+  }
+  load(); setTab('list');
+})();
+</script>
+</body>
+</html>
