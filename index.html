@@ -237,6 +237,10 @@
       <div class="sm" style="margin-top:6px">合計: <b id="orderTotal">0</b> 円</div>
 
       <h2 class="sec">コーヒーのこと</h2>
+      <button class="btn line small" id="btnCoffeePhoto" type="button">豆の袋・メニューの写真から入力</button>
+      <input type="file" id="fCoffeeFile" accept="image/*" hidden>
+      <div class="sm" id="coffeeMsg" style="margin-top:6px"></div>
+      <div class="chips" id="coffeePick"></div>
       <label class="f">種類(選ぶと、その種類に合う項目だけが出ます)</label>
       <div class="seg k4" id="kindSeg">
         <button type="button" data-kind="espresso">エスプレッソ</button><button type="button" data-kind="drip">ドリップ</button><button type="button" data-kind="milk">ミルク系</button><button type="button" data-kind="other">その他</button>
@@ -457,7 +461,7 @@
     $('fName').value = ed.name; $('fArea').value = ed.area; $('fDate').value = ed.date || '';
     $('fDrink').value = ed.drink || ''; $('fBeans').value = ed.beans || ''; $('fRoast').value = ed.roast || ''; $('fTemp').value = ed.temp || '';
     $('fMemo').value = ed.memo || '';
-    $('receiptMsg').textContent = '';
+    $('receiptMsg').textContent = ''; $('coffeeMsg').textContent = ''; $('coffeePick').innerHTML = '';
     applyKind();
     [['tAcid', 'acid'], ['tBitter', 'bitter'], ['tSweet', 'sweet']].forEach(function (p) { $(p[0]).value = ed.taste[p[1]] || 0; sliderLabel(p[0]); });
     setStatus(ed.status); drawStars(); drawOrders(); drawTags(); drawPhoto(); drawGeo();
@@ -539,7 +543,7 @@
     if (!f) return;
     var msg = $('receiptMsg'), btn = $('btnReceipt');
     msg.style.color = ''; msg.textContent = '読み取り中…(10秒ほどかかります)'; btn.disabled = true;
-    shrinkImage(f, 1800).then(function (image) { return Sync.callFn('read-receipt', { image: image, mime: 'image/jpeg' }); })
+    shrinkImage(f, 1800).then(function (image) { return Sync.callFn('read-photo', { kind: 'receipt', image: image, mime: 'image/jpeg' }); })
       .then(function (res) {
         var list = res.items || [];
         if (!list.length) { msg.textContent = '品名が見つかりませんでした。レシート全体が写っているか確かめてください。'; return; }
@@ -560,6 +564,57 @@
       })
       .catch(function (err) { msg.style.color = '#b3261e'; msg.textContent = err.message === 'NOAUTH' ? 'ログインが必要です。' : '読み取れませんでした:' + err.message + (err.detail ? '(' + err.detail + ')' : ''); })
       .then(function () { btn.disabled = false; });
+  });
+
+  /* コーヒー豆の袋・ラベル・メニューの写真から、豆・産地と焙煎度を入れる(メモにも書き足す) */
+  var coffeeBeans = [];
+  function applyBean(b) {
+    var parts = [];
+    [b.origin, b.name, b.process].forEach(function (p) {
+      if (!p || parts.some(function (q) { return q.indexOf(p) >= 0; })) return;
+      parts = parts.filter(function (q) { return p.indexOf(q) < 0; }); parts.push(p);
+    });
+    if (ed.kind === 'milk') { ed.kind = ''; applyKind(); }              // ミルク系だと豆の欄が隠れているので、解除して見えるようにする
+    if (parts.length) $('fBeans').value = parts.join(' ');
+    if (b.roast) $('fRoast').value = b.roast;
+    var extras = [];
+    if (b.roaster) extras.push('ロースター: ' + b.roaster);
+    if (b.variety) extras.push('品種: ' + b.variety);
+    if (b.producer) extras.push('生産者: ' + b.producer);
+    if (b.notes && b.notes.length) extras.push('フレーバー: ' + b.notes.join('、'));
+    if (b.roast_date) extras.push('焙煎日: ' + b.roast_date);
+    var memo = $('fMemo').value, add = extras.filter(function (l) { return memo.indexOf(l) < 0; });
+    if (add.length) $('fMemo').value = memo + (memo.trim() ? '\n' : '') + add.join('\n');
+    $('coffeePick').innerHTML = '';
+    var msg = $('coffeeMsg'); msg.style.color = '';
+    msg.textContent = '入力しました: ' + (parts.length ? '豆・産地「' + parts.join(' ') + '」' : '') + (b.roast ? '、焙煎度「' + b.roast + '」' : '') + (add.length ? '。メモに' + add.length + '行を足しました' : '') + '。内容を確かめてください。';
+  }
+  $('btnCoffeePhoto').addEventListener('click', function () {
+    if (!window.Sync || !Sync.isLoggedIn()) { var m = $('coffeeMsg'); m.style.color = '#b3261e'; m.textContent = '写真の読み取りには、ログインが必要です(統計画面の「クラウド同期」でログインしてください)。'; return; }
+    $('fCoffeeFile').click();
+  });
+  $('fCoffeeFile').addEventListener('change', function (e) {
+    var f = e.target.files && e.target.files[0]; e.target.value = '';
+    if (!f) return;
+    var msg = $('coffeeMsg'), btn = $('btnCoffeePhoto');
+    msg.style.color = ''; msg.textContent = '読み取り中…(10秒ほどかかります)'; btn.disabled = true; $('coffeePick').innerHTML = '';
+    shrinkImage(f, 1800).then(function (image) { return Sync.callFn('read-photo', { kind: 'coffee', image: image, mime: 'image/jpeg' }); })
+      .then(function (res) {
+        if (!Array.isArray(res.beans)) { msg.style.color = '#b3261e'; msg.textContent = '中継の関数が古いようです(Supabase の「read-photo」を、新しい内容に更新してください)。'; return; }
+        coffeeBeans = res.beans;
+        if (!coffeeBeans.length) { msg.textContent = '豆の情報が見つかりませんでした。袋のラベルや、メニューの文字がはっきり写っているか確かめてください。'; return; }
+        if (coffeeBeans.length === 1) { applyBean(coffeeBeans[0]); return; }
+        msg.textContent = coffeeBeans.length + '件見つかりました。入れたい豆を選んでください。';
+        $('coffeePick').innerHTML = coffeeBeans.map(function (b, i) {
+          var label = [b.roaster, b.origin || b.name].filter(Boolean).join(' ').slice(0, 24) || ('豆' + (i + 1));
+          return '<button type="button" class="chip" data-bean="' + i + '">' + esc(label) + '</button>';
+        }).join('');
+      })
+      .catch(function (err) { msg.style.color = '#b3261e'; msg.textContent = err.message === 'NOAUTH' ? 'ログインが必要です。' : '読み取れませんでした:' + err.message + (err.detail ? '(' + err.detail + ')' : ''); })
+      .then(function () { btn.disabled = false; });
+  });
+  $('coffeePick').addEventListener('click', function (e) {
+    var b = e.target.closest('[data-bean]'); if (b) applyBean(coffeeBeans[Number(b.dataset.bean)]);
   });
 
   /* コーヒーの種類 */

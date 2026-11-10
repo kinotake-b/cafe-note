@@ -12,5 +12,5 @@
 - 設定の手順は `supabase/手順.md`、表を作るSQLは `supabase/setup.sql`
 - `sync.js` は `recipe-app/` にも同じ内容で置いてある。直したら両方に反映する
 
-## レシートの写真読み取り
-- 編集画面の「レシートの写真から入力」。Gemini を、Supabase の中継(Edge Function `read-receipt`)経由で呼ぶ。設定は `supabase/手順-レシート読み取り.md`
+## 写真読み取り(レシート・コーヒー豆)
+- 編集画面の「レシートの写真から入力」。Gemini を、Supabase の中継(Edge Function `read-photo`)経由で呼ぶ。設定は `supabase/手順-レシート読み取り.md`
