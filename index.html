@@ -546,12 +546,17 @@
         var hasOrders = ed.orders.some(function (o) { return String(o.n).trim() || Number(o.p); });
         if (hasOrders && !confirm('いまの注文を、レシートの内容に置き換えます。よろしいですか?')) { msg.textContent = ''; return; }
         ed.orders = list.map(function (i) { return { n: i.name, p: i.price }; });
-        if (!$('fName').value.trim() && res.store) $('fName').value = res.store;
+        var storeNote = '店名は読み取れませんでした。';
+        if (res.store) {
+          var cur = $('fName').value.trim();
+          if (!cur || (cur !== res.store && confirm('レシートの店名は「' + res.store + '」でした。店名をこれに置き換えますか?(いまは「' + cur + '」)'))) $('fName').value = res.store;
+          storeNote = '店名: ' + res.store + '。';
+        }
         if (res.date && ed.status !== 'want') $('fDate').value = res.date;
         drawOrders();
         var sum = list.reduce(function (s, i) { return s + i.price; }, 0), off = res.total && sum !== res.total;
         msg.style.color = off ? 'var(--accent)' : '';
-        msg.textContent = off ? '品名の合計(' + sum + '円)が、レシートの合計(' + res.total + '円)と合いません。読み違いがないか確かめてください。' : '読み取りました。内容を確かめてから保存してください。';
+        msg.textContent = storeNote + (off ? '品名の合計(' + sum + '円)が、レシートの合計(' + res.total + '円)と合いません。読み違いがないか確かめてください。' : '読み取りました。内容を確かめてから保存してください。');
       })
       .catch(function (err) { msg.style.color = '#b3261e'; msg.textContent = err.message === 'NOAUTH' ? 'ログインが必要です。' : '読み取れませんでした:' + err.message + (err.detail ? '(' + err.detail + ')' : ''); })
       .then(function () { btn.disabled = false; });
