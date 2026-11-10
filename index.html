@@ -230,6 +230,9 @@
       <label class="f">注文したもの(名前と値段)</label>
       <div id="orders"></div>
       <button class="btn line small" id="addOrder">＋ 注文を足す</button>
+      <button class="btn line small" id="btnReceipt" type="button">レシートの写真から入力</button>
+      <input type="file" id="fReceiptFile" accept="image/*" hidden>
+      <div class="sm" id="receiptMsg" style="margin-top:6px"></div>
       <div class="sm" style="margin-top:6px">合計: <b id="orderTotal">0</b> 円</div>
 
       <h2 class="sec">コーヒーのこと</h2>
@@ -453,6 +456,7 @@
     $('fName').value = ed.name; $('fArea').value = ed.area; $('fDate').value = ed.date || '';
     $('fDrink').value = ed.drink || ''; $('fBeans').value = ed.beans || ''; $('fRoast').value = ed.roast || ''; $('fTemp').value = ed.temp || '';
     $('fMemo').value = ed.memo || '';
+    $('receiptMsg').textContent = '';
     applyKind();
     [['tAcid', 'acid'], ['tBitter', 'bitter'], ['tSweet', 'sweet']].forEach(function (p) { $(p[0]).value = ed.taste[p[1]] || 0; sliderLabel(p[0]); });
     setStatus(ed.status); drawStars(); drawOrders(); drawTags(); drawPhoto(); drawGeo();
@@ -509,6 +513,47 @@
     if (allTags().indexOf(t) < 0) customTags.push(t);
     if (ed.tags.indexOf(t) < 0) ed.tags.push(t);
     $('newTag').value = ''; drawTags();
+  });
+
+  /* レシートの写真から、店名・日付・注文を入れる(Gemini。キーを隠すためSupabaseの中継を通す) */
+  function shrinkImage(file, max) {
+    return new Promise(function (ok, ng) {
+      var url = URL.createObjectURL(file), img = new Image();
+      img.onload = function () {
+        var r = Math.min(1, max / Math.max(img.width, img.height)), c = document.createElement('canvas');
+        c.width = Math.round(img.width * r); c.height = Math.round(img.height * r);
+        c.getContext('2d').drawImage(img, 0, 0, c.width, c.height);
+        URL.revokeObjectURL(url); ok(c.toDataURL('image/jpeg', 0.82).split(',')[1]);
+      };
+      img.onerror = function () { URL.revokeObjectURL(url); ng(new Error('この写真は読み込めませんでした')); };
+      img.src = url;
+    });
+  }
+  $('btnReceipt').addEventListener('click', function () {
+    if (!window.Sync || !Sync.isLoggedIn()) { var m = $('receiptMsg'); m.style.color = '#b3261e'; m.textContent = '写真の読み取りには、ログインが必要です(統計画面の「クラウド同期」でログインしてください)。'; return; }
+    $('fReceiptFile').click();
+  });
+  $('fReceiptFile').addEventListener('change', function (e) {
+    var f = e.target.files && e.target.files[0]; e.target.value = '';
+    if (!f) return;
+    var msg = $('receiptMsg'), btn = $('btnReceipt');
+    msg.style.color = ''; msg.textContent = '読み取り中…(10秒ほどかかります)'; btn.disabled = true;
+    shrinkImage(f, 1800).then(function (image) { return Sync.callFn('read-receipt', { image: image, mime: 'image/jpeg' }); })
+      .then(function (res) {
+        var list = res.items || [];
+        if (!list.length) { msg.textContent = '品名が見つかりませんでした。レシート全体が写っているか確かめてください。'; return; }
+        var hasOrders = ed.orders.some(function (o) { return String(o.n).trim() || Number(o.p); });
+        if (hasOrders && !confirm('いまの注文を、レシートの内容に置き換えます。よろしいですか?')) { msg.textContent = ''; return; }
+        ed.orders = list.map(function (i) { return { n: i.name, p: i.price }; });
+        if (!$('fName').value.trim() && res.store) $('fName').value = res.store;
+        if (res.date && ed.status !== 'want') $('fDate').value = res.date;
+        drawOrders();
+        var sum = list.reduce(function (s, i) { return s + i.price; }, 0), off = res.total && sum !== res.total;
+        msg.style.color = off ? 'var(--accent)' : '';
+        msg.textContent = off ? '品名の合計(' + sum + '円)が、レシートの合計(' + res.total + '円)と合いません。読み違いがないか確かめてください。' : '読み取りました。内容を確かめてから保存してください。';
+      })
+      .catch(function (err) { msg.style.color = '#b3261e'; msg.textContent = err.message === 'NOAUTH' ? 'ログインが必要です。' : '読み取れませんでした:' + err.message + (err.detail ? '(' + err.detail + ')' : ''); })
+      .then(function () { btn.disabled = false; });
   });
 
   /* コーヒーの種類 */
