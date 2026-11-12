@@ -70,7 +70,7 @@
   .empty { text-align: center; color: var(--sub); padding: 48px 16px; }
   .empty p { text-wrap: balance; margin: 0; }
   .empty .btn { margin-top: 16px; }
-  .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 20px 12px; margin-top: 16px; }
+  .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 20px 12px; margin-top: 16px; align-items: start; }
   .tc { display: block; width: 100%; text-align: left; }
   .tc .ph { aspect-ratio: 1; border-radius: 14px; background: var(--tint); color: var(--accent); overflow: hidden; display: grid; place-items: center; font: 700 48px var(--sans); }
   .tc .ph img { width: 100%; height: 100%; object-fit: cover; }
@@ -107,6 +107,13 @@
   .order button { color: var(--sub); font-size: 20px; }
   .slider { display: grid; grid-template-columns: 52px 1fr 20px; align-items: center; gap: 8px; font-size: 14px; }
   .slider input { padding: 0; min-height: 32px; background: none; accent-color: var(--accent); }
+  /* 畳める入力のまとまり(コーヒーのこと・お店のこと) */
+  details.fold { margin-top: 20px; border-top: 1px solid var(--line); }
+  details.fold > summary { list-style: none; display: flex; align-items: baseline; gap: 10px; min-height: 52px; padding-top: 14px; font: 600 18px/1.4 var(--sans); cursor: pointer; }
+  details.fold > summary::-webkit-details-marker { display: none; }
+  details.fold > summary::after { content: "＋"; margin-left: auto; color: var(--accent); font-weight: 400; }
+  details.fold[open] > summary::after { content: "－"; }
+  details.fold > summary + * { margin-top: 4px; }
   .photoin { width: 100%; aspect-ratio: 16/10; border-radius: 16px; background: var(--soft); display: grid; place-items: center; color: var(--sub); overflow: hidden; position: relative; }
   .photoin img { width: 100%; height: 100%; object-fit: cover; }
 
@@ -168,7 +175,7 @@
   <section class="view" id="v-map">
     <div class="head"><h1>地図</h1><span class="sm" id="mapNote"></span></div>
     <div id="map"></div>
-    <p class="sm">茶色の丸=行った店、灰色の丸=行きたい店。位置は店を登録するときに「住所から探す」か「現在地」で入れます。</p>
+    <p class="sm">緑の丸=行った店、灰色の丸=行きたい店。位置は店を登録するときに「住所から探す」か「現在地」で入れます。</p>
   </section>
 
   <!-- 統計 -->
@@ -178,6 +185,7 @@
     <div id="syncBox"></div>
     <h2 class="sec">データの保管</h2>
     <p class="sm">記録はこの端末のブラウザの中にだけ保存されます。機種変更やブラウザのデータ消去に備えて、ときどき書き出してください。</p>
+    <div id="storageUse"></div>
     <div class="row">
       <button class="btn line" id="btnExport">書き出す</button>
       <button class="btn line" id="btnImport">読み込む</button>
@@ -206,7 +214,7 @@
     <button class="btn primary small" id="edSave">保存</button>
   </div></div>
   <div class="page">
-    <div class="seg" style="margin-top:16px">
+    <div class="seg" id="statusSeg" style="margin-top:16px">
       <button data-status="visited" class="on">行った</button>
       <button data-status="want">行きたい</button>
     </div>
@@ -236,7 +244,7 @@
       <div class="sm" style="margin-top:6px">写真は Google の Gemini に送られます。名前・会員番号・カード番号が写らないよう、品名と値段の部分だけを撮ってください。</div>
       <div class="sm" style="margin-top:6px">合計: <b id="orderTotal">0</b> 円</div>
 
-      <h2 class="sec">コーヒーのこと</h2>
+      <details class="fold" id="coffeeSec"><summary>コーヒーのこと<span class="sm">飲み物・豆・味</span></summary>
       <button class="btn line small" id="btnCoffeePhoto" type="button">豆の袋・メニューの写真から入力</button>
       <input type="file" id="fCoffeeFile" accept="image/*" hidden>
       <div class="sm" id="coffeeMsg" style="margin-top:6px"></div>
@@ -260,11 +268,12 @@
       <div class="slider"><span>苦味</span><input type="range" id="tBitter" min="0" max="5" value="0"><b id="tBitterV">–</b></div>
       <div class="slider"><span>甘み</span><input type="range" id="tSweet" min="0" max="5" value="0"><b id="tSweetV">–</b></div>
       <div class="sm">0のままなら「未入力」として扱います。</div>
+      </details>
 
-      <h2 class="sec">お店のこと</h2>
-      <label class="f">タグ</label>
+      <details class="fold" id="shopSec"><summary>お店のこと<span class="sm">タグ</span></summary>
       <div class="chips" id="tagPick"></div>
       <div class="row"><input id="newTag" placeholder="タグを足す(例: 猫がいる)"><button class="btn small" id="btnNewTag" style="flex:none">追加</button></div>
+      </details>
     </div>
 
     <label class="f" id="fMemoLbl">メモ</label>
@@ -277,7 +286,7 @@
 </div>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
-<script src="sync.js?v=1"></script>
+<script src="sync.js?v=2"></script>
 <script>
 (function () {
   'use strict';
@@ -312,6 +321,19 @@
     var t = document.createElement('div'); t.className = 'toast'; t.textContent = msg; document.body.appendChild(t);
     clearTimeout(toastTimer); toastTimer = setTimeout(function () { t.remove(); }, 2600);
   }
+  /* ブラウザの保存場所(localStorage)の使用量。上限はおよそ5MBで、同じサイトにあるレシピ帳と分け合っている。
+     写真は文字に直して入れているので、使用量の大半は写真になる。 */
+  var STORE_LIMIT = 5e6;
+  function storageRatio() {
+    var n = 0;
+    try { for (var i = 0; i < localStorage.length; i++) { var k = localStorage.key(i); n += k.length + (localStorage.getItem(k) || '').length; } } catch (e) { return 0; }
+    return n / STORE_LIMIT;
+  }
+  function storageHtml() {
+    var r = storageRatio(), pct = Math.min(100, Math.round(r * 100));
+    return '<div class="hbar" style="grid-template-columns:96px 1fr 44px"><span>保存容量</span><div class="tr"><i style="width:' + pct + '%;' + (r > 0.8 ? 'background:#b3261e' : '') + '"></i></div><span>' + pct + '%</span></div>' +
+      '<p class="sm" style="margin-top:0">約' + (r * STORE_LIMIT / 1e6).toFixed(1) + 'MB / 5MB(目安。レシピ帳と共有)。' + (r > 0.8 ? '残りが少なくなっています。書き出してから、古い記録の写真を外すと空きます。' : '大半は写真です。') + '</p>';
+  }
   function total(it) { return (it.orders || []).reduce(function (s, o) { return s + (Number(o.p) || 0); }, 0); }
   function allTags() {
     var set = PRESET_TAGS.concat(customTags);
@@ -343,12 +365,12 @@
   function tileHtml(it) {
     var meta = [it.area, shortDate(it.date)].filter(Boolean).map(esc).join(' ・ ');
     var sub = [it.drink ? esc(it.drink) : '', total(it) ? yen(total(it)) : ''].filter(Boolean).join(' ・ ');
-    return '<button class="tc" data-open="' + it.id + '"><div class="ph">' + (it.photo ? '<img src="' + it.photo + '" alt="">' : initial(it)) + '</div>' +
+    return '<button class="tc" data-open="' + esc(it.id) + '"><div class="ph">' + (it.photo ? '<img src="' + esc(it.photo) + '" alt="">' : initial(it)) + '</div>' +
       '<div class="name">' + esc(it.name) + '</div><div class="meta">' + meta + '</div><div>' + starsHtml(it.rating || 0) + '</div>' + (sub ? '<div class="meta">' + sub + '</div>' : '') + '</button>';
   }
   function rowHtml(it) {
     var meta = [it.area, shortDate(it.date)].filter(Boolean).map(esc).join(' ・ ');
-    return '<button class="card" data-open="' + it.id + '"><div class="thumb">' + (it.photo ? '<img src="' + it.photo + '" alt="">' : initial(it)) + '</div><div class="body">' +
+    return '<button class="card" data-open="' + esc(it.id) + '"><div class="thumb">' + (it.photo ? '<img src="' + esc(it.photo) + '" alt="">' : initial(it)) + '</div><div class="body">' +
       '<div class="name">' + esc(it.name) + '</div><div class="meta">' + meta + '</div>' + (it.memo ? '<div class="memo">' + esc(it.memo) + '</div>' : '') + '</div></button>';
   }
   function renderList() {
@@ -400,8 +422,8 @@
   function find(id) { for (var i = 0; i < items.length; i++) if (items[i].id === id) return items[i]; return null; }
   function openDetail(id) {
     var it = find(id); if (!it) return; detailId = id;
-    var h = '<div class="bar"><div class="in"><button class="btn text" data-d="close">← 戻る</button><span class="ttl"></span><button class="btn text" data-d="edit">編集</button></div></div><div class="page">';
-    if (it.photo) h += '<img class="hero" src="' + it.photo + '" alt="">';
+    var h = '<div class="bar"><div class="in"><button class="btn text" data-d="close">‹ 戻る</button><span class="ttl"></span><button class="btn text" data-d="edit">編集</button></div></div><div class="page">';
+    if (it.photo) h += '<img class="hero" src="' + esc(it.photo) + '" alt="">';
     h += '<div class="head" style="padding-bottom:0"><h1 style="font-size:24px">' + esc(it.name) + '</h1></div>';
     if (it.status === 'want') h += '<div class="sm">行きたいリスト</div>'; else h += '<div>' + starsHtml(it.rating || 0) + '</div>';
     h += '<dl class="kv">';
@@ -465,17 +487,26 @@
     applyKind();
     [['tAcid', 'acid'], ['tBitter', 'bitter'], ['tSweet', 'sweet']].forEach(function (p) { $(p[0]).value = ed.taste[p[1]] || 0; sliderLabel(p[0]); });
     setStatus(ed.status); drawStars(); drawOrders(); drawTags(); drawPhoto(); drawGeo();
+    var tt = ed.taste;   // 入っている項目があるまとまりだけ、最初から開いておく
+    $('coffeeSec').open = !!(ed.kind || ed.drink || ed.beans || ed.roast || ed.temp || tt.acid || tt.bitter || tt.sweet);
+    $('shopSec').open = ed.tags.length > 0;
+    edSnap = edState();
     $('editor').hidden = false; $('editor').scrollTop = 0; document.body.style.overflow = 'hidden';
+  }
+  /* 編集画面を開いたときと比べて、何か変えたかを調べるための「いまの状態」 */
+  var edSnap = '';
+  function edState() {
+    return JSON.stringify([ed, ['fName', 'fArea', 'fDate', 'fDrink', 'fBeans', 'fRoast', 'fTemp', 'fMemo', 'tAcid', 'tBitter', 'tSweet'].map(function (id) { return $(id).value; })]);
   }
   function closeEditor() { $('editor').hidden = true; document.body.style.overflow = ''; ed = null; }
   function setStatus(s) {
     ed.status = s;
-    document.querySelectorAll('.seg button').forEach(function (b) { b.classList.toggle('on', b.dataset.status === s); });
+    document.querySelectorAll('#statusSeg button').forEach(function (b) { b.classList.toggle('on', b.dataset.status === s); });   // 種類のボタン(#kindSeg)には触らない
     document.querySelectorAll('.only-visited').forEach(function (el) { el.hidden = (s === 'want'); });
     $('fDateLbl').textContent = s === 'want' ? '行く予定(任意)' : '訪問日';
     $('fMemoLbl').textContent = s === 'want' ? 'メモ(行きたい理由・メニューなど)' : 'メモ';
   }
-  document.querySelector('.seg').addEventListener('click', function (e) {
+  $('statusSeg').addEventListener('click', function (e) {
     var b = e.target.closest('button'); if (!b) return;
     setStatus(b.dataset.status);
     if (b.dataset.status === 'visited' && !$('fDate').value) $('fDate').value = today();
@@ -642,10 +673,10 @@
     var f = e.target.files && e.target.files[0]; if (!f) return;
     var url = URL.createObjectURL(f), img = new Image();
     img.onload = function () {
-      var max = 800, r = Math.min(1, max / Math.max(img.width, img.height));
+      var max = 720, r = Math.min(1, max / Math.max(img.width, img.height));   // 容量を節約するため、少し小さめにして保存する
       var c = document.createElement('canvas'); c.width = Math.round(img.width * r); c.height = Math.round(img.height * r);
       c.getContext('2d').drawImage(img, 0, 0, c.width, c.height);
-      ed.photo = c.toDataURL('image/jpeg', 0.72); URL.revokeObjectURL(url); drawPhoto();
+      ed.photo = c.toDataURL('image/jpeg', 0.7); URL.revokeObjectURL(url); drawPhoto();
     };
     img.onerror = function () { URL.revokeObjectURL(url); toast('この写真は読み込めませんでした'); };
     img.src = url;
@@ -683,7 +714,7 @@
   });
 
   $('edCancel').addEventListener('click', function () {
-    if (confirm('編集を閉じます。保存していない内容は消えます。')) closeEditor();
+    if (edState() === edSnap || confirm('編集を閉じます。保存していない内容は消えます。')) closeEditor();   // 何も変えていなければ確認しない
   });
   $('edSave').addEventListener('click', function () {
     var name = $('fName').value.trim();
@@ -700,9 +731,10 @@
     if (isNew) items.push(ed); else items = items.map(function (x) { return x.id === ed.id ? ed : x; });
     if (!save()) { items = before; ed._isNew = isNew; return; }
     var goTab = ed.status === 'want' ? 'want' : 'list';
-    closeEditor(); setTab(goTab); toast('保存しました');
+    closeEditor(); setTab(goTab);
+    toast(storageRatio() > 0.8 ? '保存しました。保存容量が残り少なくなっています(統計の画面で確かめられます)' : '保存しました');
   });
-  function addNew() { openEditor(null); if (tab === 'want') { ed.status = 'want'; ed.date = ''; $('fDate').value = ''; setStatus('want'); } }
+  function addNew() { openEditor(null); if (tab === 'want') { ed.status = 'want'; ed.date = ''; $('fDate').value = ''; setStatus('want'); edSnap = edState(); } }
   $('fab').addEventListener('click', addNew);
 
   /* ---------- 地図 ---------- */
@@ -744,6 +776,7 @@
     return Object.keys(m).map(function (k) { return [k, m[k]]; }).sort(function (a, b) { return b[1] - a[1]; });
   }
   function renderStats() {
+    $('storageUse').innerHTML = storageHtml();
     var v = items.filter(function (i) { return i.status !== 'want'; });
     if (!v.length) { $('stats').innerHTML = '<div class="empty"><p>記録が1件たまると、月ごとの支出や味の傾向がここに出ます。</p></div>'; return; }
     var rated = v.filter(function (i) { return i.rating; });
@@ -819,6 +852,11 @@
       getMeta: function () { return { customTags: customTags }; },
       setMeta: function (m) { customTags = (m && m.customTags) || []; save(); },
       metaScore: function (m) { return ((m && m.customTags) || []).length; },
+      mergeMeta: function (a, b) {   // 自分で足したタグは、両方の端末の分を合わせる(タグを消す機能はないので、足すだけ)
+        var t = ((a && a.customTags) || []).slice();
+        ((b && b.customTags) || []).forEach(function (x) { if (t.indexOf(x) < 0) t.push(x); });
+        return { customTags: t };
+      },
       onApplied: render
     });
     Sync.mountUI($('syncBox'));
